@@ -30,6 +30,50 @@ pub const INDEX_HTML: &str = r#"<!DOCTYPE html>
             margin-bottom: 0.25rem;
         }
         
+        .header-controls {
+            margin-top: 0.5rem;
+        }
+        
+        .file-input {
+            padding: 0.5rem;
+            margin-right: 0.5rem;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 4px;
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+        
+        .status {
+            margin-top: 0.5rem;
+            padding: 0.5rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        
+        .status-success {
+            background: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+        
+        .status-writeback {
+            background: rgba(59, 130, 246, 0.2);
+            color: #3b82f6;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        
+        .status-error {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        
+        .status-loading {
+            background: rgba(156, 163, 175, 0.2);
+            color: #9ca3af;
+            border: 1px solid rgba(156, 163, 175, 0.3);
+        }
+        
         .content {
             flex: 1;
             display: grid;
@@ -115,6 +159,12 @@ pub const INDEX_HTML: &str = r#"<!DOCTYPE html>
     <div class="header">
         <h1>🎨 Wezztershier - WezTerm Configuration</h1>
         <p>Beautiful GUI for configuring WezTerm settings</p>
+        
+        <div class="header-controls">
+            <input type="file" id="configFile" class="file-input" accept=".lua">
+            <button class="btn" onclick="app.loadConfigFile()">Load Config</button>
+            <div id="status" class="status" style="display: none;"></div>
+        </div>
     </div>
     
     <div id="app">
@@ -154,6 +204,42 @@ pub const INDEX_HTML: &str = r#"<!DOCTYPE html>
                 const result = await parseResponse.json();
                 this.widgets = result.widgets;
                 this.configPreview = result.config_preview;
+            }
+            
+            async loadConfigFile() {
+                const fileInput = document.getElementById('configFile');
+                const statusDiv = document.getElementById('status');
+                
+                if (!fileInput.files.length) {
+                    this.showStatus('Please select a config file first', 'error');
+                    return;
+                }
+                
+                const file = fileInput.files[0];
+                const formData = new FormData();
+                formData.append('config_file', file);
+                
+                try {
+                    this.showStatus('Loading configuration file...', 'loading');
+                    
+                    const response = await fetch('/api/load_config', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                    }
+                    
+                    const result = await response.json();
+                    this.widgets = result.widgets;
+                    this.configPreview = result.config_preview;
+                    
+                    this.showStatus(`Loaded ${file.name} successfully! Changes will write back to this file.`, 'success');
+                    this.render();
+                } catch (error) {
+                    this.showStatus(`Failed to load config: ${error.message}`, 'error');
+                }
             }
             
             async updateWidget(widgetId, value) {
@@ -250,11 +336,40 @@ pub const INDEX_HTML: &str = r#"<!DOCTYPE html>
                 const app = document.getElementById('app');
                 app.innerHTML = `<div class="error">Error: ${message}</div>`;
             }
+            
+            showStatus(message, type = 'info') {
+                const statusDiv = document.getElementById('status');
+                statusDiv.style.display = 'block';
+                statusDiv.textContent = message;
+                
+                // Remove existing status classes
+                statusDiv.classList.remove('status-success', 'status-error', 'status-loading');
+                
+                // Add appropriate class
+                switch(type) {
+                    case 'success':
+                        statusDiv.classList.add('status-success');
+                        break;
+                    case 'error':
+                        statusDiv.classList.add('status-error');
+                        break;
+                    case 'loading':
+                        statusDiv.classList.add('status-loading');
+                        break;
+                }
+                
+                // Auto-hide after 5 seconds for non-error messages
+                if (type !== 'error') {
+                    setTimeout(() => {
+                        statusDiv.style.display = 'none';
+                    }, 5000);
+                }
+            }
         }
         
         // Initialize app when page loads
         document.addEventListener('DOMContentLoaded', () => {
-            new WezztershierApp();
+            window.app = new WezztershierApp();
         });
     </script>
 </body>

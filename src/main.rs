@@ -1,4 +1,6 @@
 mod web_assets;
+mod gui;
+mod config;
 
 use anyhow::{Context, Result};
 use axum::{
@@ -11,9 +13,12 @@ use clap::{Args, Parser, Subcommand};
 use colored::*;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 use tower_http::cors::CorsLayer;
 use wezztershier_core::{
     ConfigManager,
+    config::{BackupManager, ConfigUpdater},
     parser::parse_annotations,
     widgets::{factory::WidgetBuilder, implementations::register_core_widgets, traits::WidgetValue},
 };
@@ -39,8 +44,10 @@ struct Cli {
 enum Commands {
     /// Parse a configuration file and display widgets
     Parse(ParseArgs),
-    /// Launch the embedded web GUI
+    /// Launch the GUI (respects user preference or use --native/--web)
     Gui(GuiArgs),
+    /// Configure wezztershier settings
+    Configure(ConfigureArgs),
     /// Validate a configuration file
     Validate(ValidateArgs),
     /// List available widget types
@@ -72,13 +79,36 @@ struct GuiArgs {
     #[arg(value_name = "FILE")]
     file: Option<PathBuf>,
 
-    /// Port for web server
+    /// Use native GUI instead of web interface (overrides default preference)
+    #[arg(long)]
+    native: bool,
+    
+    /// Use web GUI instead of native interface (overrides default preference)
+    #[arg(long, conflicts_with = "native")]
+    web: bool,
+
+    /// Port for web server (web mode only)
     #[arg(short, long, default_value = "8080")]
     port: u16,
 
-    /// Run server in background (daemon mode)  
+    /// Run server in background (daemon mode, web mode only)  
     #[arg(long)]
     daemon: bool,
+}
+
+#[derive(Args)]
+struct ConfigureArgs {
+    /// Set default GUI backend (native or web)
+    #[arg(long, value_name = "BACKEND")]
+    set_default_gui: Option<String>,
+
+    /// Show current configuration
+    #[arg(long)]
+    show: bool,
+
+    /// Reset all settings to defaults
+    #[arg(long)]
+    reset: bool,
 }
 
 #[derive(Args)]
@@ -140,8 +170,28 @@ struct ApiResponse {
     config_preview: String,
 }
 
-// Global state (simple approach for single-user web GUI)
-static mut WIDGET_BUILDER: Option<WidgetBuilder> = None;
+// Global state for web GUI with file writeback support
+struct AppState {
+    widget_builder: WidgetBuilder,
+    config_manager: Option<ConfigManager>,
+    backup_manager: Option<BackupManager>,
+    config_content: String,
+    last_update: Instant,
+}
+
+impl AppState {
+    fn new() -> Self {
+        Self {
+            widget_builder: WidgetBuilder::new(),
+            config_manager: None,
+            backup_manager: None,
+            config_content: String::new(),
+            last_update: Instant::now(),
+        }
+    }
+}
+
+static APP_STATE: Mutex<Option<AppState>> = Mutex::const_new(None);
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -166,6 +216,7 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Parse(args) => handle_parse(args).await,
         Commands::Gui(args) => handle_gui(args).await,
+        Commands::Configure(args) => handle_configure(args).await,
         Commands::Validate(args) => handle_validate(args).await,
         Commands::Widgets => handle_widgets().await,
         Commands::Docs(args) => handle_docs(args).await,
@@ -174,33 +225,143 @@ async fn main() -> Result<()> {
 }
 
 async fn handle_gui(args: GuiArgs) -> Result<()> {
-    println!("{}", "🎨 Launching Wezztershier Web GUI...".magenta().bold());
-    
-    if let Some(file) = args.file {
-        println!("Configuration file: {}", file.display().to_string().cyan());
+    // Determine which GUI to use based on args and user preferences
+    let use_native = if args.native {
+        true
+    } else if args.web {
+        false
+    } else {
+        // Check user preference
+        match config::ConfigManager::load() {
+            Ok(config_manager) => config_manager.config().default_gui_backend == config::GuiBackend::Native,
+            Err(_) => true, // Default to native if config fails to load
+        }
+    };
+
+    if use_native {
+        println!("{}", "🎨 Launching Wezztershier Native GUI...".magenta().bold());
+        if !args.native {
+            println!("{}", "   (Using user preference. Use --web to override)".dimmed());
+        }
+        
+        if let Some(file) = &args.file {
+            println!("Configuration file: {}", file.display().to_string().cyan());
+        }
+        
+        // Launch native GUI (blocking call)
+        gui::run_native_gui(args.file.clone())
+            .context("Failed to start native GUI")?;
+    } else {
+        println!("{}", "🎨 Launching Wezztershier Web GUI...".magenta().bold());
+        if !args.web {
+            println!("{}", "   (Using user preference. Use --native to override)".dimmed());
+        }
+        
+        if let Some(file) = args.file {
+            println!("Configuration file: {}", file.display().to_string().cyan());
+        }
+
+        let app = Router::new()
+            .route("/", get(serve_index))
+            .route("/api/parse", post(parse_config))
+            .route("/api/load", post(load_config_file))
+            .route("/api/update", post(update_widget))
+            .route("/api/sample", get(get_sample_config))
+            .layer(CorsLayer::permissive());
+
+        let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", args.port))
+            .await
+            .context("Failed to bind to address")?;
+
+        println!("{}Server running at: {}", "🌐 ".green(), format!("http://localhost:{}", args.port).blue().underline());
+        
+        if !args.daemon {
+            println!("{}Press Ctrl+C to stop the server", "💡 ".yellow());
+        }
+
+        axum::serve(listener, app)
+            .await
+            .context("Failed to start web server")?;
     }
 
-    let app = Router::new()
-        .route("/", get(serve_index))
-        .route("/api/parse", post(parse_config))
-        .route("/api/update", post(update_widget))
-        .route("/api/sample", get(get_sample_config))
-        .layer(CorsLayer::permissive());
+    Ok(())
+}
 
-    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", args.port))
-        .await
-        .context("Failed to bind to address")?;
-
-    println!("{}Server running at: {}", "🌐 ".green(), format!("http://localhost:{}", args.port).blue().underline());
-    
-    if !args.daemon {
-        println!("{}Press Ctrl+C to stop the server", "💡 ".yellow());
+async fn handle_configure(args: ConfigureArgs) -> Result<()> {
+    if args.show {
+        // Show current configuration
+        match config::ConfigManager::load() {
+            Ok(config_manager) => {
+                println!("{}", "🔧 Wezztershier Configuration".cyan().bold());
+                println!("Configuration file: {}", config_manager.path().display());
+                println!();
+                println!("Current Settings:");
+                println!("  Default GUI Backend: {}", 
+                    config_manager.config().default_gui_backend.as_str().yellow());
+            }
+            Err(e) => {
+                println!("{}", "⚠️  No configuration found, using defaults".yellow());
+                println!("  Default GUI Backend: {}", config::GuiBackend::Native.as_str().yellow());
+                println!("  Error: {}", e);
+            }
+        }
+        return Ok(());
     }
 
-    axum::serve(listener, app)
-        .await
-        .context("Failed to start web server")?;
+    if args.reset {
+        // Reset configuration to defaults
+        println!("{}", "🔄 Resetting configuration to defaults...".blue());
+        let mut config_manager = config::ConfigManager::load()
+            .unwrap_or_else(|_| {
+                let path = dirs::config_dir()
+                    .unwrap_or_else(|| std::env::temp_dir())
+                    .join("wezztershier")
+                    .join("config.toml");
+                config::ConfigManager::new(path, config::WezztershierConfig::default())
+            });
+        
+        config_manager.reset()
+            .context("Failed to reset configuration")?;
+        
+        println!("{}", "✅ Configuration reset to defaults".green());
+        println!("  Default GUI Backend: {}", config::GuiBackend::Native.as_str().yellow());
+        return Ok(());
+    }
 
+    if let Some(backend_str) = args.set_default_gui {
+        // Set default GUI backend
+        let backend = config::GuiBackend::from_str(&backend_str)
+            .context("Invalid GUI backend")?;
+
+        let mut config_manager = config::ConfigManager::load()
+            .unwrap_or_else(|_| {
+                println!("{}", "Creating new configuration file...".blue());
+                // Create with defaults
+                let path = dirs::config_dir()
+                    .unwrap_or_else(|| std::env::temp_dir())
+                    .join("wezztershier")
+                    .join("config.toml");
+                config::ConfigManager::new(path, config::WezztershierConfig::default())
+            });
+
+        config_manager.config_mut().default_gui_backend = backend;
+        config_manager.save()
+            .context("Failed to save configuration")?;
+
+        println!("{}", "✅ Configuration updated".green());
+        println!("  Default GUI Backend: {}", backend.as_str().yellow());
+        println!("  Saved to: {}", config_manager.path().display());
+        return Ok(());
+    }
+
+    // No specific action, show help
+    println!("{}", "🔧 Wezztershier Configure".cyan().bold());
+    println!("Use one of the following options:");
+    println!("  --show                     Show current configuration");
+    println!("  --set-default-gui native   Set native GUI as default");
+    println!("  --set-default-gui web      Set web GUI as default");
+    println!("  --reset                    Reset all settings to defaults");
+    
     Ok(())
 }
 
@@ -213,13 +374,17 @@ async fn parse_config(Json(payload): Json<ConfigRequest>) -> Result<Json<ApiResp
     let entries = parse_annotations(&payload.config_content)
         .map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    let mut builder = WidgetBuilder::new();
-    builder.add_from_entries(&entries)
+    let mut state_guard = APP_STATE.lock().await;
+    let mut state = state_guard.take().unwrap_or_else(AppState::new);
+    
+    state.widget_builder = WidgetBuilder::new();
+    state.widget_builder.add_from_entries(&entries)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    builder.generate_auto_layout();
+    state.widget_builder.generate_auto_layout();
+    state.config_content = payload.config_content;
 
-    let app_data = builder.serialize_app_data()
+    let app_data = state.widget_builder.serialize_app_data()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let widgets = app_data.get("widgets").cloned().unwrap_or_default();
@@ -228,10 +393,58 @@ async fn parse_config(Json(payload): Json<ConfigRequest>) -> Result<Json<ApiResp
         .unwrap_or("")
         .to_string();
 
-    // Store builder globally (simple approach for single-user GUI)
-    unsafe {
-        WIDGET_BUILDER = Some(builder);
-    }
+    *state_guard = Some(state);
+
+    Ok(Json(ApiResponse {
+        widgets,
+        config_preview,
+    }))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct LoadConfigRequest {
+    file_path: String,
+}
+
+async fn load_config_file(Json(payload): Json<LoadConfigRequest>) -> Result<Json<ApiResponse>, StatusCode> {
+    let config_path = PathBuf::from(&payload.file_path);
+    
+    let config_manager = ConfigManager::new(&config_path);
+    let config_content = config_manager.read_config().await
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    
+    let backup_manager = BackupManager::new(&config_path, None, 10)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    // Create initial backup
+    let _backup_path = backup_manager.create_backup("gui-session").await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    let entries = parse_annotations(&config_content)
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    let mut state_guard = APP_STATE.lock().await;
+    let mut state = state_guard.take().unwrap_or_else(AppState::new);
+    
+    state.config_manager = Some(config_manager);
+    state.backup_manager = Some(backup_manager);
+    state.widget_builder = WidgetBuilder::new();
+    state.widget_builder.add_from_entries(&entries)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    state.widget_builder.generate_auto_layout();
+    state.config_content = config_content;
+
+    let app_data = state.widget_builder.serialize_app_data()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let widgets = app_data.get("widgets").cloned().unwrap_or_default();
+    let config_preview = app_data.get("config_preview")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    *state_guard = Some(state);
 
     Ok(Json(ApiResponse {
         widgets,
@@ -240,35 +453,91 @@ async fn parse_config(Json(payload): Json<ConfigRequest>) -> Result<Json<ApiResp
 }
 
 async fn update_widget(Json(payload): Json<WidgetUpdateRequest>) -> Result<Json<ApiResponse>, StatusCode> {
-    unsafe {
-        if let Some(builder) = WIDGET_BUILDER.as_mut() {
-            let widget_value = match payload.value {
-                serde_json::Value::String(s) => WidgetValue::String(s),
-                serde_json::Value::Number(n) => WidgetValue::Number(n.as_f64().unwrap_or(0.0)),
-                serde_json::Value::Bool(b) => WidgetValue::Boolean(b),
-                _ => return Err(StatusCode::BAD_REQUEST),
-            };
+    // Prepare writeback data outside the lock
+    let (config_manager_opt, content, last_update, response) = {
+        let mut state_guard = APP_STATE.lock().await;
+        let state = state_guard.as_mut().ok_or(StatusCode::BAD_REQUEST)?;
+        
+        let widget_value = match payload.value {
+            serde_json::Value::String(s) => WidgetValue::String(s),
+            serde_json::Value::Number(n) => WidgetValue::Number(n.as_f64().unwrap_or(0.0)),
+            serde_json::Value::Bool(b) => WidgetValue::Boolean(b),
+            _ => return Err(StatusCode::BAD_REQUEST),
+        };
 
-            builder.update_widget_value(&payload.widget_id, widget_value)
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        state.widget_builder.update_widget_value(&payload.widget_id, widget_value)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-            let app_data = builder.serialize_app_data()
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        // Update timestamp for debouncing
+        state.last_update = Instant::now();
 
-            let widgets = app_data.get("widgets").cloned().unwrap_or_default();
-            let config_preview = app_data.get("config_preview")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+        let app_data = state.widget_builder.serialize_app_data()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-            Ok(Json(ApiResponse {
-                widgets,
-                config_preview,
-            }))
-        } else {
-            Err(StatusCode::BAD_REQUEST)
+        let widgets = app_data.get("widgets").cloned().unwrap_or_default();
+        let config_preview = app_data.get("config_preview")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        
+        let response = ApiResponse {
+            widgets,
+            config_preview,
+        };
+
+        // Clone necessary data for writeback
+        (
+            state.config_manager.clone(),
+            state.config_content.clone(), 
+            state.last_update,
+            response
+        )
+    };
+
+    // Handle file writeback outside the lock
+    if let Some(config_manager) = config_manager_opt {
+        let generated_config = {
+            let state_guard = APP_STATE.lock().await;
+            let state = state_guard.as_ref().ok_or(StatusCode::BAD_REQUEST)?;
+            state.widget_builder.generate_config()
+        };
+        
+        let config_updater = ConfigUpdater::new(content);
+        
+        match config_updater.update_tuner_block(&generated_config) {
+            Ok(updated_content) => {
+                // Update stored content first
+                {
+                    let mut state_guard = APP_STATE.lock().await;
+                    if let Some(state) = state_guard.as_mut() {
+                        state.config_content = updated_content.clone();
+                    }
+                }
+                
+                // Spawn writeback task with debouncing
+                tokio::spawn(async move {
+                    // Wait for debounce period
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    
+                    // Check if this is still the latest update
+                    let current_state_guard = APP_STATE.lock().await;
+                    if let Some(current_state) = current_state_guard.as_ref() {
+                        if current_state.last_update == last_update {
+                            // Write to file - this will trigger WezTerm reload
+                            if let Err(e) = config_manager.write_config(&updated_content).await {
+                                tracing::error!("Failed to write config: {}", e);
+                            }
+                        }
+                    }
+                });
+            }
+            Err(e) => {
+                tracing::error!("Failed to update tuner block: {}", e);
+            }
         }
     }
+
+    Ok(Json(response))
 }
 
 async fn get_sample_config() -> Json<String> {
