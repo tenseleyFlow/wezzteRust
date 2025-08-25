@@ -13,6 +13,7 @@ use tokio::{
 };
 
 /// Configuration file manager
+#[derive(Clone)]
 pub struct ConfigManager {
     config_path: PathBuf,
 }
@@ -107,6 +108,7 @@ impl ConfigManager {
 }
 
 /// Backup manager for configuration files
+#[derive(Clone)]
 pub struct BackupManager {
     backup_dir: PathBuf,
     config_path: PathBuf,
