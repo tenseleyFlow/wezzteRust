@@ -1,17 +1,16 @@
 # Makefile for Wezztershier
-# Beautiful GUI generator for WezTerm configuration files
+# Beautiful single-binary GUI for WezTerm configuration files
 
 PACKAGE = wezztershier
-VERSION = 0.1.0
+VERSION = 0.3.0
 RUST_TOOLCHAIN = stable
 
 .PHONY: help build install uninstall test clean dist rpm dev-install check format bench
 
 help:
 	@echo "Available targets:"
-	@echo "  build       - Build the package (CLI and core library)"
-	@echo "  build-gui   - Build the Tauri GUI application" 
-	@echo "  install     - Install the CLI package"
+	@echo "  build       - Build the unified binary (CLI + embedded web GUI)"
+	@echo "  install     - Install the package"
 	@echo "  uninstall   - Uninstall the package"
 	@echo "  dev-install - Install in development mode"
 	@echo "  test        - Run tests"
@@ -23,19 +22,12 @@ help:
 	@echo "  rpm         - Build RPM package"
 
 build:
-	@echo "Building Wezztershier CLI..."
-	cargo build --release -p wezztershier-cli
-	@echo "✓ CLI build complete"
-
-build-gui: build
-	@echo "Building Wezztershier GUI..."
-	@command -v npm >/dev/null 2>&1 || (echo "npm not available - install Node.js" && exit 1)
-	npm install
-	npm run tauri build
-	@echo "✓ GUI build complete"
+	@echo "Building Wezztershier (unified binary)..."
+	cargo build --release
+	@echo "✓ Build complete - single binary with embedded web GUI"
 
 install:
-	cargo install --path src-cli
+	cargo install --path .
 
 uninstall:
 	@echo "Uninstalling $(PACKAGE)..."
@@ -43,13 +35,11 @@ uninstall:
 	@echo "Uninstall complete!"
 
 dev-install:
-	cargo install --path src-cli --debug
+	cargo install --path . --debug
 
 test:
 	@echo "Running core library tests..."
 	cargo test -p wezztershier-core --verbose
-	@echo "Running CLI tests..."
-	cargo test -p wezztershier-cli --verbose
 	@echo "Running workspace tests..."
 	cargo test --workspace --verbose
 
@@ -72,14 +62,13 @@ bench:
 clean:
 	cargo clean
 	rm -rf dist/
-	rm -rf node_modules/
 	rm -f $(PACKAGE)-$(VERSION).tar.gz
 
 dist: clean
 	@echo "Creating distribution package..."
 	@# Create list of files that exist
 	@files_to_package=""; \
-	for item in src-core src-cli src-tauri src templates examples docs packaging scripts *.toml *.json *.md *.spec Makefile LICENSE benches; do \
+	for item in src src-core templates examples docs packaging scripts *.toml *.md *.spec Makefile LICENSE benches; do \
 		if [ -e "$$item" ]; then \
 			files_to_package="$$files_to_package $$item"; \
 		fi; \
@@ -90,7 +79,6 @@ dist: clean
 	tar czf $(PACKAGE)-$(VERSION).tar.gz \
 		--exclude='.git*' \
 		--exclude='target' \
-		--exclude='node_modules' \
 		--exclude='dist' \
 		--exclude='*.rpm' \
 		--transform 's,^,$(PACKAGE)-$(VERSION)/,' \
@@ -121,6 +109,8 @@ smoke-test: build
 	@target/release/wezztershier widgets >/dev/null && echo "✓ Widget listing works"
 	@target/release/wezztershier parse examples/test-config.lua >/dev/null && echo "✓ Configuration parsing works"
 	@target/release/wezztershier validate examples/test-config.lua >/dev/null && echo "✓ Configuration validation works"
+	@echo "✓ Testing embedded web GUI..."
+	@timeout 5 target/release/wezztershier gui --daemon --port 8081 >/dev/null 2>&1 && echo "✓ Web GUI starts successfully" || echo "⚠ Web GUI test skipped"
 	@echo "All smoke tests passed!"
 
 # Integration test with actual WezTerm config

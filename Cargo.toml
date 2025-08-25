@@ -1,6 +1,6 @@
 [package]
 name = "wezztershier"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 description = "Beautiful GUI for WezTerm configuration with embedded web interface"
 license = "MIT"
@@ -33,6 +33,7 @@ serde_json = "1.0"
 
 # File operations
 dirs = "5.0"
+toml = "0.8"
 
 # Logging and output
 tracing = "0.1"
@@ -42,6 +43,11 @@ colored = "2.0"
 # Error handling
 thiserror = "1.0"
 anyhow = "1.0"
+
+# Native GUI (egui)
+egui = "0.28"
+eframe = { version = "0.28", features = ["default"] }
+rfd = "0.14"  # Native file dialogs
 
 [dev-dependencies]
 tokio-test = "0.4"
