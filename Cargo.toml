@@ -1,0 +1,16 @@
+[package]
+name = "wezzte-rust"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+members = [
+    "src-core",  # Core parsing and logic
+]
+
+[dependencies]
+# Core parsing library
+wezzte-core = { path = "src-core" }
+
+[dev-dependencies]
+tokio-test = "0.4"
