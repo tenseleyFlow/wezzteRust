@@ -1,0 +1,33 @@
+[package]
+name = "wezztershier-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Command-line interface for Wezztershier"
+
+[[bin]]
+name = "wezztershier"
+path = "src/main.rs"
+
+[dependencies]
+# Core wezztershier library
+wezztershier-core = { path = "../src-core" }
+
+# CLI framework
+clap = { version = "4.0", features = ["derive", "color"] }
+
+# Async runtime and serialization
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# File operations
+dirs = "5.0"
+
+# Logging and output
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+colored = "2.0"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"

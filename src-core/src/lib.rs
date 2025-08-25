@@ -8,6 +8,8 @@ pub mod lexer;
 pub mod parser;
 pub mod ast;
 pub mod config;
+pub mod widgets;
+pub mod layout;
 
 pub use error::{WezzteError, Result};
 pub use lexer::{Token, TokenType, Lexer};

@@ -101,3 +101,10 @@ impl From<std::io::Error> for WezzteError {
         }
     }
 }
+
+/// Convert from serde_json::Error
+impl From<serde_json::Error> for WezzteError {
+    fn from(err: serde_json::Error) -> Self {
+        Self::config(format!("JSON serialization error: {}", err))
+    }
+}

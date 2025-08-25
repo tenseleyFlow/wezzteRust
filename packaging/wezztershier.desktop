@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Wezztershier
+GenericName=WezTerm Configuration GUI
+Comment=Beautiful GUI generator for WezTerm configuration files
+Exec=wezztershier-gui %f
+Icon=wezztershier
+Terminal=false
+Type=Application
+Categories=Development;Utility;Settings;
+MimeType=text/x-lua;
+Keywords=wezterm;terminal;configuration;gui;lua;
+StartupNotify=true
+StartupWMClass=wezztershier

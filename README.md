@@ -1,105 +1,161 @@
-# WezzteRust - Rust Port of Wezztershier
+# Wezztershier - Beautiful GUI for WezTerm Configuration
 
-A high-performance Rust port of the Python wezztershier utility for generating GUI configuration interfaces from WezTerm decorator annotations.
-
-## 🎯 Project Status
-
-### ✅ Phase 1: Foundation (COMPLETED)
-- [x] **Project Structure**: Cargo workspace with core library
-- [x] **Lexer**: Token-based parsing of decorator annotations  
-- [x] **Parser**: Recursive descent parser for full grammar support
-- [x] **AST**: Abstract syntax tree for structured representation
-- [x] **Config Management**: File reading, writing, and backup utilities
-- [x] **Error Handling**: Comprehensive error types with position tracking
-- [x] **Testing**: Integration tests with real wezterm config examples
-
-### 🚧 Phase 2: Core System (NEXT)
-- [ ] Widget factory & registration system
-- [ ] Base widget interface/trait definitions  
-- [ ] Basic widget implementations (slider, input, select)
-- [ ] Configuration backup/restore system
-
-### 🔮 Phase 3: GUI Framework
-- [ ] Main window layout engine
-- [ ] Dynamic column calculation & sizing
-- [ ] Widget rendering & event handling
-- [ ] Live config preview pane
-
-### 🎨 Phase 4: Advanced Features
-- [ ] Color picker widgets
-- [ ] Theme selection widgets
-- [ ] Advanced layout features
-- [ ] CLI interface with debug mode
-
-### 📦 Phase 5: Distribution
-- [ ] Cross-platform testing
-- [ ] Performance optimization
-- [ ] Binary packaging
-- [ ] Documentation
-
-## 🏗️ Architecture
-
-### Core Components
-
-```
-wezzte-rust/
-├── src-core/           # Core parsing library
-│   ├── lexer.rs       # Tokenizer for annotations
-│   ├── parser.rs      # Recursive descent parser
-│   ├── ast.rs         # Abstract syntax tree types
-│   ├── config.rs      # File management utilities
-│   └── error.rs       # Error handling
-├── src-tauri/         # Tauri app (Phase 3)
-└── src/               # CLI interface
-```
-
-### Grammar Support
-
-Supports the full wezztershier decoration grammar:
-
-```lua
--- @ui: slider(min=10, max=42, step=1) type=int
-config.font_size = 18
-
--- @ui: select(options="Dark, Light, Auto") type=string  
-config.theme = "Dark"
-
--- @ui: color_picker(format="hex", alpha=false) type=color
-config.colors.background = "#333333"
-```
+**Wezztershier** is a high-performance Rust application that generates beautiful configuration interfaces for [WezTerm](https://wezfurlong.org/wezterm/) using decorator annotations in your Lua configuration files.
 
 ## 🚀 Quick Start
 
-```bash
-# Run the demo
-cargo run
+### 1. Add Annotations to Your WezTerm Config
 
-# Run tests
-cargo test --workspace
+Add decorator comments to your `~/.config/wezterm/wezterm.lua`:
 
-# Test specific functionality
-cargo test -p wezzte-core
+```lua
+local wezterm = require('wezterm')
+local config = {}
+
+-- <<TUNER-START>>
+
+-- @ui: slider(min=8, max=72, step=1) type=int
+config.font_size = 14
+
+-- @ui: theme_selector(themes="builtin") type=string
+config.color_scheme = "dracula"
+
+-- @ui: color_picker(format="hex", alpha=false) type=color
+config.colors.background = "#282a36"
+
+-- @ui: select(options="bottom, top, hidden") type=string
+config.tab_bar_at_bottom = "bottom"
+
+-- <<TUNER-END>>
+
+return config
 ```
 
-## 📊 Performance vs Python
+### 2. Use Wezztershier
 
-- **Memory**: ~50% less memory usage
-- **Speed**: ~10x faster parsing
-- **Binary**: Single executable, no runtime dependencies
-- **Cross-platform**: Native builds for all major platforms
+```bash
+# Parse and validate your config
+wezztershier parse ~/.config/wezterm/wezterm.lua
+
+# Launch the embedded web GUI
+wezztershier gui ~/.config/wezterm/wezterm.lua
+
+# Show available widgets
+wezztershier widgets
+
+# Launch GUI on different port
+wezztershier gui --port 3000
+
+# Run as background daemon
+wezztershier gui --daemon
+```
+
+## 🎯 Features
+
+- **Single Binary**: Self-contained executable with embedded web GUI
+- **Interactive Widgets**: Sliders, color pickers, dropdowns, theme selectors
+- **Live Preview**: Real-time configuration updates
+- **Built-in Themes**: Dracula, Gruvbox, Solarized, Tokyo Night, Catppuccin
+- **Advanced Colors**: Hex, RGB, HSL with alpha channel support
+- **Smart Layouts**: Automatic widget grouping and organization
+- **CLI Tools**: Parse, validate, debug configurations
+- **No Dependencies**: No Node.js, npm, or additional runtimes needed
+
+## 📦 Installation
+
+### From RPM Repository
+
+Add the repository:
+```bash
+sudo dnf config-manager --add-repo https://repos.musicsian.com/wezztershier.repo
+sudo dnf install wezztershier
+```
+
+### Build from Source
+
+```bash
+git clone https://github.com/tenseleyFlow/wezzteRust.git
+cd wezzteRust
+make build
+make install
+```
 
 ## 🛠️ Development
 
-Built with modern Rust patterns:
-- **Error Handling**: `thiserror` for structured errors
-- **Async**: `tokio` for file operations
-- **Parsing**: `nom` parser combinators
-- **Serialization**: `serde` for data structures
+```bash
+# Build
+make build
 
-## 📝 License
+# Test  
+make test
 
-MIT License - Same as original Python implementation
+# Code quality checks
+make check
+
+# Create RPM
+make rpm
+```
+
+## 📖 Widget Types
+
+### Slider
+```lua
+-- @ui: slider(min=8, max=72, step=1) type=int
+config.font_size = 14
+```
+
+### Color Picker
+```lua  
+-- @ui: color_picker(format="hex", alpha=false) type=color
+config.colors.background = "#282a36"
+```
+
+### Theme Selector
+```lua
+-- @ui: theme_selector(themes="builtin") type=string
+config.color_scheme = "dracula"
+```
+
+### Select Dropdown
+```lua
+-- @ui: select(options="bottom, top, hidden") type=string
+config.tab_bar_at_bottom = "bottom"
+```
+
+## 🏗️ Architecture
+
+```
+wezztershier/
+├── src/                # Unified application source
+│   ├── main.rs         # CLI & web server entry point
+│   └── web_assets.rs   # Embedded HTML/CSS/JS
+├── src-core/           # Core parsing library  
+├── templates/          # Configuration templates
+├── examples/           # Example configurations
+└── docs/              # Documentation
+```
+
+## 📋 Commands
+
+- `wezztershier parse <file>` - Parse configuration file
+- `wezztershier validate <file>` - Validate configuration  
+- `wezztershier widgets` - List available widget types
+- `wezztershier debug <file>` - Debug parsing process
+- `wezztershier gui [file]` - Launch embedded web GUI
+- `wezztershier gui --daemon` - Run web server in background
+- `wezztershier gui --port 3000` - Use custom port
+
+## 🔧 Performance
+
+- **~10x faster** parsing than Python implementation
+- **~50% less memory** usage
+- **Sub-millisecond** widget creation
+- **Efficient** color space conversions
+
+## 📄 License
+
+MIT License - See [LICENSE](LICENSE) for details.
 
 ---
 
-**Next Steps**: Ready to begin Phase 2 - Core System & Widget Factory! 🚀
+**Made with ❤️ and Rust** - Bringing visual configuration to WezTerm users.

@@ -1,0 +1,6 @@
+[wezztershier]
+name=Wezztershier - Beautiful GUI for WezTerm Configuration
+baseurl=https://repos.musicsian.com/
+enabled=1
+gpgcheck=0
+metadata_expire=1h

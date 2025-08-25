@@ -1,16 +1,53 @@
 [package]
-name = "wezzte-rust"
+name = "wezztershier"
 version = "0.1.0"
 edition = "2021"
+description = "Beautiful GUI for WezTerm configuration with embedded web interface"
+license = "MIT"
+authors = ["espadonne <espadonne@outlook.com>"]
 
 [workspace]
 members = [
-    "src-core",  # Core parsing and logic
+    "src-core",  # Core parsing and logic library
 ]
+
+[[bin]]
+name = "wezztershier"
+path = "src/main.rs"
 
 [dependencies]
 # Core parsing library
-wezzte-core = { path = "src-core" }
+wezztershier-core = { path = "src-core" }
+
+# CLI framework
+clap = { version = "4.0", features = ["derive", "color"] }
+
+# Web server
+axum = "0.7"
+tokio = { version = "1.0", features = ["full"] }
+tower-http = { version = "0.5", features = ["fs", "cors"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# File operations
+dirs = "5.0"
+
+# Logging and output
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+colored = "2.0"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
 
 [dev-dependencies]
 tokio-test = "0.4"
+criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = "3.0"
+
+[[bench]]
+name = "parsing_benchmark"
+harness = false

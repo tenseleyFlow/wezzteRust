@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎨 Wezztershier - WezTerm Configuration GUI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .header p {
+            opacity: 0.8;
+            font-size: 0.9rem;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            height: calc(100vh - 80px);
+            gap: 1px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        .panel h2 {
+            margin-bottom: 1.5rem;
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 0.5rem;
+        }
+
+        .load-section {
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .load-section button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            margin-right: 1rem;
+            transition: background 0.2s;
+        }
+
+        .load-section button:hover {
+            background: #5a67d8;
+        }
+
+        .widget-grid {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .widget {
+            padding: 1rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: white;
+        }
+
+        .widget-label {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #2d3748;
+        }
+
+        .widget-key {
+            font-size: 0.8rem;
+            color: #718096;
+            margin-bottom: 1rem;
+        }
+
+        .widget input, .widget select {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #cbd5e0;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .slider {
+            flex: 1;
+        }
+
+        .slider-value {
+            min-width: 50px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .config-preview {
+            font-family: 'Courier New', monospace;
+            background: #1a202c;
+            color: #e2e8f0;
+            padding: 1.5rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            height: calc(100% - 4rem);
+            overflow-y: auto;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #718096;
+        }
+
+        .error {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 1rem;
+            border-radius: 6px;
+            margin: 1rem 0;
+        }
+
+        .color-input {
+            width: 60px !important;
+            height: 40px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎨 Wezztershier - WezTerm Configuration GUI</h1>
+        <p>Beautiful visual interface for configuring WezTerm settings</p>
+    </div>
+
+    <div class="container">
+        <div class="panel">
+            <h2>Configuration Widgets</h2>
+            
+            <div class="load-section">
+                <button onclick="loadSample()">Load Sample Config</button>
+                <button onclick="loadCustom()">Load Custom Config</button>
+            </div>
+            
+            <div id="widgets-container">
+                <div class="loading">
+                    Click "Load Sample Config" to start configuring your WezTerm setup!
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Generated Configuration</h2>
+            <div id="config-preview" class="config-preview">
+-- Your generated WezTerm configuration will appear here
+-- Click "Load Sample Config" to begin
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentWidgets = {};
+
+        async function loadSample() {
+            try {
+                const response = await fetch('/api/sample');
+                const configContent = await response.json();
+                await parseConfig(configContent);
+            } catch (error) {
+                showError('Failed to load sample configuration: ' + error.message);
+            }
+        }
+
+        async function loadCustom() {
+            const configContent = prompt('Paste your WezTerm configuration with @ui annotations:');
+            if (configContent) {
+                await parseConfig(configContent);
+            }
+        }
+
+        async function parseConfig(configContent) {
+            try {
+                const response = await fetch('/api/parse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ config_content: configContent })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to parse configuration');
+                }
+
+                const result = await response.json();
+                currentWidgets = result.widgets;
+                updateUI(result);
+            } catch (error) {
+                showError('Configuration parsing failed: ' + error.message);
+            }
+        }
+
+        async function updateWidget(widgetId, value) {
+            try {
+                const response = await fetch('/api/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ widget_id: widgetId, value: value })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to update widget');
+                }
+
+                const result = await response.json();
+                currentWidgets = result.widgets;
+                updateConfigPreview(result.config_preview);
+            } catch (error) {
+                showError('Widget update failed: ' + error.message);
+            }
+        }
+
+        function updateUI(result) {
+            updateWidgets(result.widgets);
+            updateConfigPreview(result.config_preview);
+        }
+
+        function updateWidgets(widgets) {
+            const container = document.getElementById('widgets-container');
+            container.innerHTML = '';
+
+            if (!widgets || Object.keys(widgets).length === 0) {
+                container.innerHTML = '<div class="loading">No widgets found in configuration</div>';
+                return;
+            }
+
+            Object.entries(widgets).forEach(([id, widget]) => {
+                const widgetElement = createWidgetElement(id, widget);
+                container.appendChild(widgetElement);
+            });
+        }
+
+        function createWidgetElement(id, widget) {
+            const div = document.createElement('div');
+            div.className = 'widget';
+            
+            const label = document.createElement('div');
+            label.className = 'widget-label';
+            label.textContent = widget.label || widget.config_key || id;
+            
+            const key = document.createElement('div');
+            key.className = 'widget-key';
+            key.textContent = widget.config_key || id;
+            
+            div.appendChild(label);
+            div.appendChild(key);
+            
+            const input = createInputForWidget(id, widget);
+            div.appendChild(input);
+            
+            return div;
+        }
+
+        function createInputForWidget(id, widget) {
+            const type = widget.widget_type || 'text';
+            
+            switch (type) {
+                case 'slider':
+                    return createSliderWidget(id, widget);
+                case 'select':
+                    return createSelectWidget(id, widget);
+                case 'color_picker':
+                    return createColorWidget(id, widget);
+                default:
+                    return createTextWidget(id, widget);
+            }
+        }
+
+        function createSliderWidget(id, widget) {
+            const container = document.createElement('div');
+            container.className = 'slider-container';
+            
+            const slider = document.createElement('input');
+            slider.type = 'range';
+            slider.className = 'slider';
+            slider.min = widget.min || 0;
+            slider.max = widget.max || 100;
+            slider.step = widget.step || 1;
+            slider.value = widget.value || widget.min || 0;
+            
+            const valueDisplay = document.createElement('span');
+            valueDisplay.className = 'slider-value';
+            valueDisplay.textContent = slider.value;
+            
+            slider.oninput = () => {
+                valueDisplay.textContent = slider.value;
+                updateWidget(id, parseFloat(slider.value));
+            };
+            
+            container.appendChild(slider);
+            container.appendChild(valueDisplay);
+            
+            return container;
+        }
+
+        function createSelectWidget(id, widget) {
+            const select = document.createElement('select');
+            
+            const options = widget.options || [];
+            options.forEach(option => {
+                const optionElement = document.createElement('option');
+                optionElement.value = option;
+                optionElement.textContent = option;
+                if (option === widget.value) {
+                    optionElement.selected = true;
+                }
+                select.appendChild(optionElement);
+            });
+            
+            select.onchange = () => {
+                updateWidget(id, select.value);
+            };
+            
+            return select;
+        }
+
+        function createColorWidget(id, widget) {
+            const input = document.createElement('input');
+            input.type = 'color';
+            input.className = 'color-input';
+            input.value = widget.value || '#000000';
+            
+            input.onchange = () => {
+                updateWidget(id, input.value);
+            };
+            
+            return input;
+        }
+
+        function createTextWidget(id, widget) {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = widget.value || '';
+            
+            input.onchange = () => {
+                updateWidget(id, input.value);
+            };
+            
+            return input;
+        }
+
+        function updateConfigPreview(configPreview) {
+            const preview = document.getElementById('config-preview');
+            preview.textContent = configPreview || '-- No configuration generated yet';
+        }
+
+        function showError(message) {
+            const container = document.getElementById('widgets-container');
+            container.innerHTML = `<div class="error">${message}</div>`;
+        }
+    </script>
+</body>
+</html>
