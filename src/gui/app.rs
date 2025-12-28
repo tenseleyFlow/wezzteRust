@@ -70,14 +70,25 @@ impl WezztershierApp {
             writeback_pending: false,
         };
 
-        // Load config file if provided
+        // Load config file if provided, otherwise try default path
         if let Some(path) = config_file {
             if let Err(e) = app.load_config_file_sync(&path) {
                 app.set_status(&format!("Failed to load {}: {}", path.display(), e), StatusType::Error);
             }
         } else {
-            // Load sample config for demonstration
-            app.load_sample_config();
+            // Try default wezterm config path first
+            match ConfigManager::get_default_config_path() {
+                Ok(default_path) if default_path.exists() => {
+                    if let Err(e) = app.load_config_file_sync(&default_path) {
+                        app.set_status(&format!("Failed to load default config: {}", e), StatusType::Warning);
+                        app.load_sample_config();
+                    }
+                }
+                _ => {
+                    // Fall back to sample config for demonstration
+                    app.load_sample_config();
+                }
+            }
         }
 
         app

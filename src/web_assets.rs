@@ -5,7 +5,7 @@ pub const INDEX_HTML: &str = r#"<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎨 Wezztershier - WezTerm Configuration</title>
+    <title>Wezztershier</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
@@ -157,8 +157,8 @@ pub const INDEX_HTML: &str = r#"<!DOCTYPE html>
 </head>
 <body>
     <div class="header">
-        <h1>🎨 Wezztershier - WezTerm Configuration</h1>
-        <p>Beautiful GUI for configuring WezTerm settings</p>
+        <h1>Wezztershier</h1>
+        <p>WezTerm config tuner</p>
         
         <div class="header-controls">
             <input type="file" id="configFile" class="file-input" accept=".lua">

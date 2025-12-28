@@ -243,46 +243,58 @@ async fn handle_gui(args: GuiArgs) -> Result<()> {
         if !args.native {
             println!("{}", "   (Using user preference. Use --web to override)".dimmed());
         }
-        
+
         if let Some(file) = &args.file {
             println!("Configuration file: {}", file.display().to_string().cyan());
         }
-        
-        // Launch native GUI (blocking call)
-        gui::run_native_gui(args.file.clone())
-            .context("Failed to start native GUI")?;
-    } else {
-        println!("{}", "🎨 Launching Wezztershier Web GUI...".magenta().bold());
-        if !args.web {
-            println!("{}", "   (Using user preference. Use --native to override)".dimmed());
+
+        // Launch native GUI, fall back to web on failure
+        match gui::run_native_gui(args.file.clone()) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                // If user explicitly requested native, don't fall back
+                if args.native {
+                    return Err(e).context("Failed to start native GUI");
+                }
+
+                // Fall back to web GUI
+                eprintln!();
+                eprintln!("{}", "⚠️  Native GUI unavailable, launching web interface...".yellow().bold());
+                eprintln!("   {}", format!("{:#}", e).dimmed());
+                eprintln!();
+            }
         }
-        
-        if let Some(file) = args.file {
-            println!("Configuration file: {}", file.display().to_string().cyan());
-        }
-
-        let app = Router::new()
-            .route("/", get(serve_index))
-            .route("/api/parse", post(parse_config))
-            .route("/api/load", post(load_config_file))
-            .route("/api/update", post(update_widget))
-            .route("/api/sample", get(get_sample_config))
-            .layer(CorsLayer::permissive());
-
-        let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", args.port))
-            .await
-            .context("Failed to bind to address")?;
-
-        println!("{}Server running at: {}", "🌐 ".green(), format!("http://localhost:{}", args.port).blue().underline());
-        
-        if !args.daemon {
-            println!("{}Press Ctrl+C to stop the server", "💡 ".yellow());
-        }
-
-        axum::serve(listener, app)
-            .await
-            .context("Failed to start web server")?;
     }
+
+    // Web GUI (either requested directly or as fallback from native failure)
+    println!("{}", "🌐 Launching Wezztershier Web GUI...".magenta().bold());
+
+    if let Some(file) = args.file {
+        println!("Configuration file: {}", file.display().to_string().cyan());
+    }
+
+    let app = Router::new()
+        .route("/", get(serve_index))
+        .route("/api/parse", post(parse_config))
+        .route("/api/load", post(load_config_file))
+        .route("/api/update", post(update_widget))
+        .route("/api/sample", get(get_sample_config))
+        .layer(CorsLayer::permissive());
+
+    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", args.port))
+        .await
+        .context("Failed to bind to address")?;
+
+    let url = format!("http://localhost:{}", args.port);
+    println!("   Server running at: {}", url.blue().underline());
+
+    if !args.daemon {
+        println!("   {}", "Press Ctrl+C to stop".dimmed());
+    }
+
+    axum::serve(listener, app)
+        .await
+        .context("Failed to start web server")?;
 
     Ok(())
 }
@@ -540,21 +552,25 @@ async fn update_widget(Json(payload): Json<WidgetUpdateRequest>) -> Result<Json<
     Ok(Json(response))
 }
 
-async fn get_sample_config() -> Json<String> {
-    Json(String::from(
-        "-- Sample WezTerm configuration with GUI annotations\n\
-         -- @ui: slider(min=8, max=72, step=1) type=int\n\
-         config.font_size = 14\n\
-         \n\
-         -- @ui: theme_selector(themes=builtin, filter=all) type=string\n\
-         config.color_scheme = \"dracula\"\n\
-         \n\
-         -- @ui: color_picker(format=hex, alpha=false) type=color\n\
-         config.colors.background = \"#282a36\"\n\
-         \n\
-         -- @ui: slider(min=0.1, max=2.0, step=0.1) type=float\n\
-         config.window_background_opacity = 0.95"
-    ))
+async fn get_sample_config() -> String {
+    String::from(
+        "local wezterm = require('wezterm')\n\
+local config = {}\n\
+\n\
+-- <<TUNER-START>>\n\
+-- @ui: slider(min=8, max=72, step=1) type=int\n\
+config.font_size = 14\n\
+\n\
+-- @ui: color_picker(format=\"hex\", alpha=false) type=color\n\
+config.colors = config.colors or {}\n\
+config.colors.background = \"#282a36\"\n\
+\n\
+-- @ui: slider(min=0.0, max=1.0, step=0.05) type=float\n\
+config.window_background_opacity = 0.95\n\
+-- <<TUNER-END>>\n\
+\n\
+return config\n"
+    )
 }
 
 // CLI command handlers (from original CLI code)
